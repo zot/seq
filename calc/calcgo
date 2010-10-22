@@ -1,0 +1,46 @@
+#!/usr/bin/env rc
+compile=8g
+link=8l
+base=/tmp/calcscript
+errs=$1^.errs
+script=$base^.go
+oldVals=''
+newVals=''
+file=$1
+*=()
+while (line=`{read}) {
+	var=`{echo $line|sed -e 's/^([^=]*)=.*$/\1/'}
+	value=`{echo $line|sed -e 's/^[^=]*=(.*)$/\1/'}
+	*=($* $var $value)
+	if (! ~ $oldVals '') {
+		oldVals=$"oldVals', '
+		newVals=$"newVals', '
+	}
+	oldVals=$"oldVals'"'$var'" : '$"value
+	newVals=$"newVals'"'$var'" : '$var
+}
+cat <<here > $script
+package main
+import . "fmt"
+func main() {
+here
+while (! ~ $#* 0) {
+	echo ('	'$1^' := float64('$2')') >> $script
+	shift 2
+}
+<$file{
+read>/dev/null
+cat >> $script
+}
+cat<<here >> $script
+	func() {
+		oldVars := map[string]float64{$oldVals}
+		for k, v := range map[string]float64{$newVals} {
+			if v != oldVars[k] {
+				Println(k, "=", v)
+			}
+		}
+	}()
+}
+here
+$compile -o $base^.8 $script > $errs && $link -o $base $base^.8 >> $errs && $base

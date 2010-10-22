@@ -1,0 +1,10 @@
+#!/usr/bin/env rc
+while (line=`{read}) {
+	CALC_VARS=($CALC_VARS `{echo $line|sed -e 's/^([^=]*)=.*/\1/'})
+	eval $line
+	eval 'CALC_OLD_'$line
+}
+. $1
+for (v in $CALC_VARS) {
+	if (test $$v '!=' $(CALC_OLD_$v)) echo $v '=' $$v
+}
