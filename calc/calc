@@ -1,5 +1,8 @@
 #!/usr/bin/env rc
 
+# calc, (c) Oct, 2010, by Bill Burdick
+# licensed with the ZLIB license (see the LICENSE file)
+
 # assign var value -- find var in window and replace its old value with the new one
 # variables are words made of letters, numbers, and/or _,  followed by '=' and, optionally,  a number
 fn assign {

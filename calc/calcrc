@@ -1,4 +1,8 @@
 #!/usr/bin/env rc
+
+# calc, (c) Oct, 2010, by Bill Burdick
+# licensed with the ZLIB license (see the LICENSE file)
+
 while (line=`{read}) {
 	CALC_VARS=($CALC_VARS `{echo $line|sed -e 's/^([^=]*)=.*/\1/'})
 	eval $line

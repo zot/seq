@@ -1,3 +1,6 @@
+calc, (c) Oct, 2010, by Bill Burdick
+licensed with the ZLIB license (see the LICENSE file)
+
 Calc parses the text in a window and finds variables of the form /[a-zA-Z0-9_]+ *= *[0-9e.+\-]*/  It sends the values to standard input of the script at the bottom of the window (which starts with /^#!/), one variable per line, <name>=<value> (variables without values are given as 0).  The script is expected to output changed variables, one per line, in the same format.  Calc parses those values and replaces them in the Acme window.
 
 Installation: put calcrc, calcgo and calc in your path.

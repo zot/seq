@@ -1,4 +1,8 @@
 #!/usr/bin/env rc
+
+# calc, (c) Oct, 2010, by Bill Burdick
+# licensed with the ZLIB license (see the LICENSE file)
+
 compile=8g
 link=8l
 base=/tmp/calcscript
