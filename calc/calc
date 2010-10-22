@@ -20,8 +20,6 @@ rm -f /tmp/cmd.errs
 9p read acme/$winid/body |
 		# extract variables and values from window
 	sed -n -e '/^#!/q;s/([a-zA-Z0-9_]+) *= *([0-9.e+\-]*)/\n\1=\2\n/g;h;:v;s/\n(.|\n)*//;s/^[a-zA-Z0-9_]+=$/&0/;/^[a-zA-Z0-9_]+=[0-9.e+\-]*/p;g;/\n/!d;s/[^\n]*\n//;h;bv' |
-cat > /tmp/vars
-cat /tmp/vars |
 		# pipe vars (VAR=VALUE) to command
 	/tmp/cmd |
 		# parse vars from commmand and convert to "assign" calls (above function)
