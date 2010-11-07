@@ -1,0 +1,12 @@
+8.out
+.#*
+[#]*#
+*.o
+*.8
+*.c
+*.so
+*.cgo1.go
+*~
+_cgo_gotypes.go
+_obj
+fltk-2.0.x-r7725/*
