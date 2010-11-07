@@ -59,10 +59,21 @@ func (s Sequence) Rest() Sequence {
 	}
 }
 
-func Cons(el Element, s Sequence) Sequence {
+func (s Sequence) AddFirst(els... interface{}) Sequence {
 	return Seq(func(c SeqChan){
-		c <- el
+		for el := range els {
+			c <- el
+		}
 		s.Output(c)
+	})
+}
+
+func (s Sequence) AddLast(els... interface{}) Sequence {
+	return Seq(func(c SeqChan){
+		s.Output(c)
+		for el := range els {
+			c <- el
+		}
 	})
 }
 
@@ -150,7 +161,7 @@ func (s Sequence) Fold(init Element, f func(acc, el Element)Element) Element {
 func (s Sequence) Combinations(number int) Sequence {
 	if number == 0 || s.IsEmpty() {return From(From())}
 	return s.Rest().Combinations(number - 1).Map(func(el Element)Element{
-		return Cons(s.First(), el.(Sequence))
+		return el.(Sequence).AddFirst(s.First())
 	}).Append(s.Rest().Combinations(number))
 }
 
