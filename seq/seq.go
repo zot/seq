@@ -18,6 +18,7 @@ func IsSeq(s interface{}) bool {
 	return test
 }
 
+// f must behave properly when the channel is closed, so that IsEmpty and First work properly
 func Seq(f func(c SeqChan)) Sequence {
 	return func() SeqChan {
 		c := make(SeqChan)
@@ -39,15 +40,9 @@ func Output(c SeqChan, el... interface{}) {
 	}
 }
 
-func Bleed(c SeqChan) {
-	for !closed(c) {
-		<- c
-	}
-}
-
 func (s Sequence) First() Element {
 	c := s()
-	defer Bleed(c)
+	defer close(c)
 	return <- c
 }
 
@@ -81,7 +76,7 @@ func (s Sequence) IsEmpty() bool {
 	c := s()
 	<- c
 	result := closed(c)
-	if !result {defer Bleed(c)}
+	if !result {defer close(c)}
 	return result
 }
 

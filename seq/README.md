@@ -11,6 +11,7 @@ Sequence supports the following operations:
 
 * Seq(f func(c chan Element)) Sequence  
 	returns a new Sequence, a function which returns a new channel and runs a goroutine that applies f to the channel and then closes the channel
+	Note: f must behave properly when the channel is closed from outside.  IsEmpty and First close the channel.
 * From(el... interface{}) Sequence  
 	returns a new Sequence of el; to make a Sequence from a vector, vec, use this: From(vec...)
 * Upto(limit int) Sequence  
@@ -55,5 +56,3 @@ Sequence supports the following operations:
 	output all of the elements of s to the channel
 * (s Sequence) Output(c SeqChan)  
 	output all of the elements of s to the channel
-* Bleed(c SeqChan)  
-	read the remaining elements of c
