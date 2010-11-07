@@ -13,7 +13,7 @@ import "io"
 import "bytes"
 import "container/vector"
 import "sort"
-import "github.com/zot/bills-tools/seq"
+import . "github.com/zot/bills-tools/seq"
 
 func score(s Element) int {
 	return s.(Sequence).Fold(0, func(acc, i Element)Element{
