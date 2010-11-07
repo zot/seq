@@ -22,8 +22,8 @@ func Seq(f func(c SeqChan)) Sequence {
 	return func() SeqChan {
 		c := make(SeqChan)
 		go func() {
+			defer close(c)
 			f(c)
-			close(c)
 		}()
 		return c
 	}

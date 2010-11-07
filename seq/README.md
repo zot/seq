@@ -12,7 +12,7 @@ Sequence supports the following operations:
 * Seq(f func(c chan Element)) Sequence  
 	returns a new Sequence, a function which returns a new channel and runs a goroutine that applies f to the channel and then closes the channel
 * From(el... interface{}) Sequence  
-	returns a new Sequence of el
+	returns a new Sequence of el; to make a Sequence from a vector, vec, use this: From(vec...)
 * Upto(limit int) Sequence  
 	returns a new Sequence of the numbers from 0 to limit
 * (s Sequence) First() Sequence  
