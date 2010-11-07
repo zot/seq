@@ -188,6 +188,19 @@ func (s Sequence) Reify() Sequence {
 	return From([]interface{}(vec)...)
 }
 
+func (s Sequence) ToVector() Vector {
+	vec := vector.Vector(make([]interface{}, 0, 128))
+	for v := range s() {
+		sv, is := v.(Sequence)
+		if is {
+			vec.Push(sv.ToVector())
+		} else {
+			vec.Push(v)
+		}
+	}
+	return vec
+}
+
 func (s Sequence) Prettyln(names map[Element]string, writer... io.Writer) {
 	if len(writer) == 0 {
 		writer = []io.Writer{os.Stdout}
