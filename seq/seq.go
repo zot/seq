@@ -76,7 +76,7 @@ func (s Sequence) IsEmpty() bool {
 	c := s()
 	<- c
 	result := closed(c)
-	if !result {defer close(c)}
+	defer close(c)
 	return result
 }
 
@@ -90,6 +90,7 @@ func (s Sequence) Append(s2 Sequence) Sequence {
 func (s Sequence) Len() int {
 	len := 0
 	c := s()
+	defer close(c)
 	for !closed(c) {
 		<- c
 		len++
