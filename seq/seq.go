@@ -13,7 +13,7 @@ type Element interface{}
 type SeqChan chan Element
 type Sequence func()SeqChan
 
-func IsSeq(s Element) bool {
+func IsSeq(s interface{}) bool {
 	_, test := s.(Sequence)
 	return test
 }
@@ -165,14 +165,15 @@ func (s Sequence) Combinations(number int) Sequence {
 	}).Append(s.Rest().Combinations(number))
 }
 
+//returns the product of the Sequences contained in sequences
 func (sequences Sequence) Product() Sequence {
 	return sequences.Fold(From(From()), func(acc, el Element)Element{
-		return el.(Sequence).PeelOnto(acc.(Sequence))
+		return el.(Sequence).peelOnto(acc.(Sequence))
 	}).(Sequence)
 }
 
-func (s Sequence) PeelOnto(result Sequence) Sequence {
-	return result.FlatMap(func(old Element)Sequence{
+func (s Sequence) peelOnto(seq Sequence) Sequence {
+	return seq.FlatMap(func(old Element)Sequence{
 		return s.Map(func(i Element) Element {
 			return old.(Sequence).Append(From(i))
 		})
