@@ -178,12 +178,13 @@ type reply struct {
 	result El
 }
 
-// for each of up to 64 values,
-// spawn a goroutine to apply f to the value and send the result back in a channel
-// return a new channel  and send the collected results through it
-// close output when finished
+// create and return an output channel
+// spawn a goroutine that does the following for each of up to 64 values:
+//   spawn a goroutine to apply f to the value and send the result back in a channel
+// send the results in order to the ouput channel as they are completed
+// then, close the channel
 func bulkMap(values []interface{}, f func(el El) El) SeqChan {
-	output := make(SeqChan)
+	output := make(SeqChan, len(values))
 	go func(){
 		received := int64(0)
 		replyChannel := make(chan reply)
