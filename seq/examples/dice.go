@@ -14,53 +14,11 @@ import "bytes"
 import "container/vector"
 import "sort"
 import . "github.com/zot/bills-tools/seq"
+//import "reflect"
 
-func score(s Element) int {
-	return s.(Sequence).Fold(0, func(acc, i Element)Element{
-		if acc.(int) > i.(int) {
-			return acc
-		}
-		return i
-	}).(int)
-}
-
-func add(i int, s Sequence) Sequence {
-	return s.Map(func(el Element)Element {
+func add(i int, s Seq) Seq {
+	return s.Map(func(el El)El {
 		return i + el.(int)
-	})
-}
-
-func hist(scores Sequence) int {
-	scorelen := scores.Len()
-	fmt.Printf("%10d scores\n", scorelen)
-	hist := map[int]int{}
-	for i,v := range make([]int, 10) {
-		hist[i + 1] = v
-	}
-	for i := range scores() {
-		hist[i.(int)]++
-	}
-	for i := 1; i <= 10; i++ {
-		percent := float(hist[i])*100/float(scorelen)
-		fmt.Printf("%10d % 5.1f (%4d) ", i, percent, hist[i])
-		for dot := 0; float(dot) < float(percent); dot++ {
-			fmt.Printf(".")
-		}
-		fmt.Println()
-	}
-	return scorelen
-}
-
-func pair(seq Sequence) (Element, Element) {
-	c := seq()
-	defer close(c)
-	a := <- c
-	return a, <-c
-}
-
-func stamp(s Sequence, stamp Sequence) Sequence {
-	return s.Map(func(el Element)Element{
-		return From(stamp, el)
 	})
 }
 
@@ -72,60 +30,52 @@ func max(a, b int) int {
 }
 
 func main() {
-	d4 := add(1, Upto(4))
-	d6 := add(1, Upto(6))
-	d8 := add(1, Upto(8))
-	d10 := add(1, Upto(10))
-	names := map[Element]string{d4:"d4", d6:"d6", d8:"d8", d10:"d10"}
+	d4 := add(1, AUpto(4))
+	d6 := add(1, AUpto(6))
+	d8 := add(1, AUpto(8))
+	d10 := add(1, AUpto(10))
+	names := map[interface{}]string{d4:"d4", d6:"d6", d8:"d8", d10:"d10"}
 	dice := From(d4, d6, d8, d10)
-	rank := map[Sequence]int{d4:0, d6:1, d8:2, d10:3}
+	rank := map[Seq]int{d4:0, d6:1, d8:2, d10:3}
 	sets := map[string]int{}
 	//attempts is [[label, [score, ...]]...]
-	attempts := From(dice, dice, dice).Product().Filter(func(d Element)bool{
+	attempts := Concurrent(Map(Filter(Product(From(dice, dice, dice)), func(d El)bool{
 		oldRank := -1
 		result := true
-		for set := range d.(Sequence)() {
-			newRank := rank[set.(Sequence)]
+		Do(d.(Seq), func(set El){
+			newRank := rank[set.(Seq)]
 			result = result && newRank >= oldRank
 			oldRank = newRank
-		}
+		})
 		return result
-	}).Map(func(el Element)Element{
+	}), func(el El)El{
 		buf := bytes.NewBuffer(make([]byte, 0, 10))
 		io.WriteString(buf, "<")
-		el.(Sequence).Pretty(names, buf)
+		Pretty(el.(Seq), names, buf)
 		io.WriteString(buf, ">")
-		return From(buf.String(), el.(Sequence).Product().Map(func(el Element)Element{
-			return el.(Sequence).Fold(0, func(acc, el Element)Element{return max(acc.(int), el.(int))})
+		return From(buf.String(), Map(Product(el.(Seq)), func(el El)El{
+			return Fold(el.(Seq), 0, func(acc, el El)El{return max(acc.(int), el.(int))})
 		}))
 	
-	}).Reify()
+	}))
 	println("#sets:", len(sets))
-	println("#Attempts:", attempts.Len())
+	fmt.Println("#Attempts:", Len(attempts))
 	println("results...")
-	attempts.Do(func(el Element){
-		label, rolls := pair(el.(Sequence))
-		fmt.Printf("%s: %d\n", label, rolls.(Sequence).Len())
+	Do(attempts, func(el El){
+		label, rolls := First2(el.(Seq))
+		fmt.Printf("%s: %d\n", label, Len(rolls.(Seq)))
 	})
-//	attempts.Prettyln(names)
-	//scores is [score, ...]
-	scores := attempts.FlatMap(func(el Element)Sequence{
-		_, sc := pair(el.(Sequence))
-		return sc.(Sequence)
-	}).Reify()
-	numScores := scores.Len()
-	println("#scores:", numScores)
-//	scores.Prettyln(names)
-	attempts.Do(func(el Element){
-		label, sc := pair(el.(Sequence))
-		attempts.Do(func(del Element){
+	cattempts := Concurrent(attempts)
+	Do(cattempts, func(el El) {
+		label, sc := First2(el.(Seq))
+		Do(cattempts, func(del El){
 			rolls := 0
 			wins := 0
 			margins := map[int]int{}
-			dlabel, dsc := pair(del.(Sequence))
-			From(sc,dsc).Product().Do(func(rel Element){
+			dlabel, dsc := First2(del.(Seq))
+			Do(Product(From(sc,dsc)), func(rel El){
 				rolls++
-				attack, defense := pair(rel.(Sequence))
+				attack, defense := First2(rel.(Seq))
 				margin := attack.(int) - defense.(int)
 				if margin > 0 {
 					wins++

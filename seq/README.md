@@ -48,6 +48,8 @@ Sequence supports the following operations:
 	returns the product of the Sequences contained in sequences
 * (s Sequence) Reify() Sequence  
 	returns a new Sequence containing the elements of s, computed by recursively walking s and all of the sequences it contains.  This is useful to cache s if it is based on expensive computation
+* (s Sequence) ToArray() []interface{}  
+	returns an array by recursively getting all of the elements from s's channel.  This is like Reify, but any nested Sequences are converted to arrays
 * (s Sequence) Pretty(names map[Element]string, writer io.Writer)  
 	print s to writer (defaults to Stdout) in a "pretty" way.  Prints Elements which are contained in names are printed as the name
 * (s Sequence) Prettyln(names map[Element]string, writer io.Writer)  
