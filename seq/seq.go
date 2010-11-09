@@ -174,42 +174,112 @@ func SMap(s Seq, f func(i El)El) Seq {
 }
 
 type reply struct {
-	index uint;
+	index int;
 	result El
 }
 
-// create and return an output channel
-// spawn a goroutine that does the following for each of up to 64 values:
-//   spawn a goroutine to apply f to the value and send the result back in a channel
-// send the results in order to the ouput channel as they are completed
-// then, close the channel
-func bulkMap(values []interface{}, f func(el El) El) SeqChan {
-	output := make(SeqChan, len(values))
-	go func(){
-		received := int64(0)
-		replyChannel := make(chan reply)
-		results := make([]interface{}, len(values))
-		for i,v := range values {
-			go func(index uint, value interface{}) {
-				replyChannel <- reply{index, f(value)}
-			}(uint(i), v)
-		}
-		for expect := 0; expect < len(values); {
-			rep := <- replyChannel
-			received |= (1 << rep.index)
-			results[rep.index] = rep.result
-			for ; (1 << uint(expect)) & received != 0; expect++ {
-				output <- results[expect]
-			}
-		}
-		close(output)
-	}()
-	return output
+type swEntry struct {
+	present boolean
+	value El
 }
 
-func CMap(s Seq, f func(el El) El) Seq {
-	return Gen(func(c SeqChan) {
-		Do(s, func(v El){c <- f(v)})
+// SlidingWindow is a vector with limited capacity and a base
+type SlidingWindow {
+	start, base, count int
+	values []swEntry
+}
+// NewSlidingWindow creates a new SlidingWindow with capacity size
+func NewSlidingWindow(size int) *SlidingWindow {return &SlidingWindow{0, 0, 0, make([]swEntry, size)}}
+func (r *SlidingWindow) Max() int {return r.base + r.Capacity()}
+func (r *SlidingWindow) Capacity() int {return len(r.values)}
+func (r *SlidingWindow) normalize(index int) int {return (index + r.Capacity()) % r.Capacity()}
+func (r *SlidingWindow) IsEmpty() bool {return r.count == 0}
+func (r *SlidingWindow) IsFull() bool {return r.count == r.Capacity()}
+func (r *SlidingWindow) GetFirst() (interface{}, bool) {return r.values[r.start].value, r.values[r.start].present}
+func (r *SlidingWindow) RemoveFirst() (interface{}, boolean) {
+	if count == 0 {return nil, false}
+	result := r.values[r.start]
+	r.values[r.start] = swEntry{false, nil}
+	if result.present {r.count--}
+	r.start = normalize(r.start++)
+	r.base++
+	return result.value, result.present
+}
+func (r *SlidingWindow) RemoveLast() (interface{}, boolean) {
+	if count == 0 {return nil, false}
+	end := r.normalize(r.start + r.Capacity() - 1)
+	result := r.values[end]
+	r.values[end] = swEntry{false, nil}
+	if result.present {r.count--}
+	if r.start > 0 {
+		r.start = normalize(r.start--)
+		r.base--
+	}
+	return result.value, result.present
+}
+func (r *SlidingWindow) Get(index int) (value interface{}, boolean) {
+	index = r.normalize(r.index - r.base + r.start)
+	if index < 0 || index >= r.Capacity() {return nil, false}
+	value = r.values[index]
+	return value.value, value.present
+}
+func (r *SlidingWindow) Set(index int, value interface{}) boolean {
+	index = r.normalize(r.index - r.base + r.start)
+	if index < 0 || index >= r.Capacity() {return false}
+	r.values[index].value = value
+	if !r.values[index].present {
+		r.values[index].present = true
+		r.count++
+	}
+	return true
+}
+
+// spawn a goroutine that does the following for each value, with up to size pending at a time:
+//   spawn a goroutine to apply f to the value and send the result back in a channel
+// send the results in order to the ouput channel as they are completed
+func CMap(s Seq, f func(el El) El, sizeOpt... int) Seq {
+	size := 64
+	if len(sizeOpt) > 0 {size = sizeOpt[0]}
+	return Gen(func(output SeqChan){
+		//punt and convert sequence to concurrent
+		//maybe someday we'll handle SequentialSequences separately
+		input := Concurrent(s)()
+		go func(){
+			window := NewSlidingWindow(size)
+			replyChannel := make(chan reply)
+			inputCount := 0
+			pendingInput := 0
+			pendingOutput := 0
+			inputClosed := false
+			for {
+				first, hasFirst := window.GetFirst()
+				oc := output
+				ic := input
+				rc :- replyChannel
+				if !hasFirst {oc = nil}
+				if inputClosed || pendingInput >= size {ic = nil}
+				if pendingOutput >= size {rc = nil}
+				select {
+				case oc <- first:
+					window.RemoveFirst()
+					pendingOutput--
+				case inputMsg := <- ic:
+					if closed(ic) {
+						inputClosed = true
+					} else {
+						go func(index int, value interface{}) {
+							replyChannel <- reply{index, f(value)}
+						}(inputCount, v)
+						inputCount++
+						pendingInput++
+					}
+				case replyMsg := <- rc:
+					window.addLast(replyMsg)
+					pendingInput--
+					pendingOutput++
+				}
+			}
+		}()
 	})
 }
 
@@ -217,17 +287,13 @@ func FlatMap(s Seq, f func(el El) Seq) Seq {return s.FlatMap(f)}
 
 func SFlatMap(s Seq, f func(i El) Seq) Seq {
 	vec := make(vector.Vector, 0, quickLen(s, 8))
-	Do(s, func(el El){
-		Do(f(el), func(sub El){vec.Push(sub)})
-	})
+	Do(SMap(s, f), func(sub El){vec.Push(sub)})
 	return (*SequentialSeq)(&vec)
 }
 
-func CFlatMap(s Seq, f func(i El) Seq) Seq {
-	return Gen(func(c SeqChan) {
-		Do(s, func(v El){
-			Do(f(v), func(sub El){c <- sub})
-		})
+func CFlatMap(s Seq, f func(i El) Seq, sizeOpt... int) Seq {
+	return Gen(func(c SeqChan){
+		Do(CMap(s, f, sizeOpt), func(sub El){c <- sub})
 	})
 }
 
