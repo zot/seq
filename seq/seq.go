@@ -256,7 +256,6 @@ func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) ConcurrentSeq {
 					inputClosed = true
 				} else {
 					go func(index int, value interface{}) {
-SpawnCount++
 						replyChannel <- reply{index, f(value)}
 					}(inputCount, inputElement)
 					inputCount++
