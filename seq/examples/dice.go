@@ -39,15 +39,6 @@ func main() {
 	rank := map[Seq]int{d4:0, d6:1, d8:2, d10:3}
 	sets := map[string]int{}
 	//attempts is [[label, [score, ...]]...]
-//println("dice...")
-//CDo(Product(From(dice,dice)), func(el El){Prettyln(el, names)})
-//println("done")
-//Prettyln(FlatMap(From(1,2,3,4), func(el El)Seq{
-//		return From("a", el)
-//	}))
-//Names = names
-//Prettyln(From(dice,dice,dice), names)
-//Prettyln(Product(From(dice,dice,dice)), names)
 	attempts := Map(Filter(Product(From(dice, dice, dice)), func(d El)bool{
 		oldRank := -1
 		result := true

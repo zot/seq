@@ -12,7 +12,7 @@ import "container/vector"
 type El interface{}
 type Seq interface {
 	// core methods
-	While(f func(i El)bool)
+	Find(f func(i El)bool) El
 	Rest() Seq
 	Len() int
 	// wrappers that keep the current type
@@ -38,10 +38,10 @@ func Sequential(s Seq) *SequentialSeq {
 func FirstN(s Seq, n int) []interface{} {
 	r := make([]interface{}, n)
 	x := 0
-	While(s, func(el El)bool{
+	Find(s, func(el El)bool{
 		r[x] = el
 		x++
-		return x < n
+		return x == n
 	})
 	return r
 }
@@ -78,40 +78,43 @@ func IsSeq(s interface{}) bool {
 
 func First(s Seq) interface{} {
 	var result interface{}
-	s.While(func(el El)bool{
+	s.Find(func(el El)bool{
 		result = el
-		return false
+		return true
 	})
 	return result
 }
 
 func IsEmpty(s Seq) bool {
 	empty := true
-	s.While(func(el El)bool{
+	s.Find(func(el El)bool{
 		empty = false
-		return false
+		return true
 	})
 	return empty
 }
 
-func While(s Seq, f func(el El) bool) {s.While(f)}
+func Find(s Seq, f func(el El) bool) El {return s.Find(f)}
+
+func While(s Seq, f func(el El) bool) {s.Find(func(el El)bool{return !f(el)})}
 
 func Do(s Seq, f func(el El)) {
-	s.While(func(el El)bool{
+	s.Find(func(el El)bool{
 		f(el)
-		return true
+		return false
 	})
 }
 
 // CDo -- do f concurrently on each element of s, in any order
-func CDo(s Seq, f func(el El)) {Do(CMap(s, func(el El)El{f(el); return nil}), func(el El){})}
+func CDo(s Seq, f func(el El)) {
+	c := CMap(s, func(el El)El{f(el); return nil})()
+	for <- c; !closed(c); <- c {}
+}
 
 func Len(s Seq) int {return s.Len()}
 
 func Output(s Seq, c SeqChan) {
-	Do(s, func(el El){
-		c <- el
-	})
+	Do(s, func(el El){c <- el})
 }
 
 func Rest(s Seq) Seq {return s.Rest()}
@@ -129,7 +132,6 @@ func SAppend(s Seq, s2 Seq) *SequentialSeq {
 	vec := make(vector.Vector, 0, quickLen(s, 8) + quickLen(s2, 8))
 	AppendToVector(s, &vec)
 	AppendToVector(s2, &vec)
-//print("SAppend ");Prettyln(s);print(" + ");Prettyln(s2);println(" = ");Prettyln((*SequentialSeq)(&vec))
 	return (*SequentialSeq)(&vec)
 }
 
@@ -226,21 +228,19 @@ func (r *SlidingWindow) Set(index int, value interface{}) bool {
 // spawn a goroutine that does the following for each value, with up to size pending at a time:
 //   spawn a goroutine to apply f to the value and send the result back in a channel
 // send the results in order to the ouput channel as they are completed
-func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) Seq {
+func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) ConcurrentSeq {
 	sizePower := uint(6)
 	if len(sizePowerOpt) > 0 {sizePower = sizePowerOpt[0]}
 	size := 1 << sizePower
 	return Gen(func(output SeqChan){
-//println("spawn")
 		//punt and convert sequence to concurrent
 		//maybe someday we'll handle SequentialSequences separately
 		input := Concurrent(s)()
-//println("spawn")
 		window := NewSlidingWindow(sizePower)
 		replyChannel := make(chan reply)
 		inputCount, pendingInput, pendingOutput := 0, 0, 0
 		inputClosed := false
-//println("START")
+		defer close(replyChannel)
 		for !inputClosed || pendingInput > 0 || pendingOutput > 0 {
 			first, hasFirst := window.GetFirst()
 			ic, oc, rc := input, output, replyChannel
@@ -256,6 +256,7 @@ func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) Seq {
 					inputClosed = true
 				} else {
 					go func(index int, value interface{}) {
+SpawnCount++
 						replyChannel <- reply{index, f(value)}
 					}(inputCount, inputElement)
 					inputCount++
@@ -267,23 +268,21 @@ func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) Seq {
 				pendingOutput++
 			}
 		}
-//println("DONE AFTER", inputCount, "ITEMS")
-		close(replyChannel)
 	})
 }
 
 func FlatMap(s Seq, f func(el El) Seq) Seq {return s.FlatMap(f)}
 
-func SFlatMap(s Seq, f func(i El) Seq) Seq {
+func SFlatMap(s Seq, f func(i El) Seq) *SequentialSeq {
 	vec := make(vector.Vector, 0, quickLen(s, 8))
 	Do(s, func(e El){Do(f(e).(Seq), func(sub El){vec.Push(sub)})})
 	return (*SequentialSeq)(&vec)
 }
 
-func CFlatMap(s Seq, f func(i El) Seq, sizeOpt... uint) Seq {
+func CFlatMap(s Seq, f func(i El) Seq, sizeOpt... uint) ConcurrentSeq {
 	return Gen(func(c SeqChan){
 		Do(CMap(s, func(e El)El{return f(e)}, sizeOpt...), func(sub El){
-			Do(sub.(Seq), func(el El){c <- el})
+			Output(sub.(Seq), c)
 		})
 	})
 }
@@ -306,11 +305,8 @@ func Combinations(s Seq, number int) Seq {
 //returns the product of the Seqs contained in sequences
 func Product(sequences Seq) Seq {
 	return Fold(sequences, From(From()), func(result, each El)El{
-//fmt.Print("folding: ");Pretty(each, Names);fmt.Print(" into ");Prettyln(result, Names)
 		return result.(Seq).FlatMap(func(seq El)Seq{
-//fmt.Print("flat map with: ");Prettyln(seq, Names)
 			return each.(Seq).Map(func(i El) El {
-//fmt.Print("map with: ");Prettyln(i, Names)
 				return seq.(Seq).Append(From(i))
 			})
 		})
@@ -335,7 +331,7 @@ func Pretty(s interface{}, args... interface{}) io.Writer {
 	return writer
 }
 
-//This is pretty ugly :)
+//This pretty is ugly :)
 func prettyLevel(s interface{}, level int, names map[interface{}]string, w io.Writer) {
 	name, hasName := names[s]
 	if hasName {
@@ -402,10 +398,13 @@ func CUpto(limit int) ConcurrentSeq {
 	})
 }
 
-func (s ConcurrentSeq) While(f func(el El)bool) {
+func (s ConcurrentSeq) Find(f func(el El)bool) El {
 	c := s()
 	defer close(c)
-	for el := <- c; !closed(c) && f(el); el = <- c {}
+	for el := <- c; !closed(c) ; el = <- c {
+		if f(el) {return el}
+	}
+	return nil
 }
 
 func (s ConcurrentSeq) Rest() Seq {
@@ -458,8 +457,11 @@ func AUpto(limit int) *SequentialSeq {
 	return (*SequentialSeq)(&a)
 }
 
-func (s *SequentialSeq) While(f func(el El)bool) {
-	for i := 0; i < len(*s) && f((*s)[i]); i++ {}
+func (s *SequentialSeq) Find(f func(el El)bool) El {
+	for i := 0; i < len(*s); i++ {
+		if f((*s)[i]) {return (*s)[i]}
+	}
+	return nil
 }
 
 func (s *SequentialSeq) Rest() Seq {
