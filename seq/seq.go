@@ -247,15 +247,11 @@ func CMap(s Seq, f func(el El) El, sizeOpt... int) Seq {
 		go func(){
 			window := NewSlidingWindow(size)
 			replyChannel := make(chan reply)
-			inputCount := 0
-			pendingInput := 0
-			pendingOutput := 0
+			inputCount, pendingInput, pendingOutput := 0, 0, 0
 			inputClosed := false
 			for {
 				first, hasFirst := window.GetFirst()
-				oc := output
-				ic := input
-				rc :- replyChannel
+				ic, oc, rc := input, output, replyChannel
 				if !hasFirst {oc = nil}
 				if inputClosed || pendingInput >= size {ic = nil}
 				if pendingOutput >= size {rc = nil}
