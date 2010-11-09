@@ -13,21 +13,13 @@ import "container/vector"
 type El interface{}
 // basic sequence support
 type Seq interface {
-	//returns the first item in a sequence for which f returns true
 	Find(f func(i El)bool) El
-	//returns a new sequence of the same type as the receiver consisting of all of the elements of s except for the first one
 	Rest() Seq
-	//returns the length of s
 	Len() int
-	//returns a new sequence of the same type as the receiver that appends this one and s2
 	Append(s2 Seq) Seq
-	//returns a new sequence of the same type as the receiver that appends s2 and this one
 	Prepend(s2 Seq) Seq
-	//returns a new sequence of the same type as the receiver consisting of the elements of s for which filter returns true
 	Filter(filter func(e El) bool) Seq
-	//returns a new sequence of the same type as s consisting of the results of appying f to the elements of s
 	Map(f func(i El) El) Seq
-	//returns a new sequence of the same type as s consisting of the concatenation of the sequences f returns when applied to all of the elements of s
 	FlatMap(f func(i El) Seq) Seq
 }
 
