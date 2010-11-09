@@ -173,40 +173,6 @@ func SMap(s Seq, f func(i El)El) Seq {
 	return (*SequentialSeq)(&vec)
 }
 
-type reply struct {
-	index uint;
-	result El
-}
-
-// create and return an output channel
-// spawn a goroutine that does the following for each of up to 64 values:
-//   spawn a goroutine to apply f to the value and send the result back in a channel
-// send the results in order to the ouput channel as they are completed
-// then, close the channel
-func bulkMap(values []interface{}, f func(el El) El) SeqChan {
-	output := make(SeqChan, len(values))
-	go func(){
-		received := int64(0)
-		replyChannel := make(chan reply)
-		results := make([]interface{}, len(values))
-		for i,v := range values {
-			go func(index uint, value interface{}) {
-				replyChannel <- reply{index, f(value)}
-			}(uint(i), v)
-		}
-		for expect := 0; expect < len(values); {
-			rep := <- replyChannel
-			received |= (1 << rep.index)
-			results[rep.index] = rep.result
-			for ; (1 << uint(expect)) & received != 0; expect++ {
-				output <- results[expect]
-			}
-		}
-		close(output)
-	}()
-	return output
-}
-
 func CMap(s Seq, f func(el El) El) Seq {
 	return Gen(func(c SeqChan) {
 		Do(s, func(v El){c <- f(v)})
