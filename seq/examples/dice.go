@@ -39,7 +39,7 @@ func main() {
 	rank := map[Seq]int{d4:0, d6:1, d8:2, d10:3}
 	sets := map[string]int{}
 	//attempts is [[label, [score, ...]]...]
-	attempts := Concurrent(Map(Filter(Product(From(dice, dice, dice)), func(d El)bool{
+	attempts := Map(Filter(Product(From(dice, dice, dice)), func(d El)bool{
 		oldRank := -1
 		result := true
 		Do(d.(Seq), func(set El){
@@ -57,7 +57,7 @@ func main() {
 			return Fold(el.(Seq), 0, func(acc, el El)El{return max(acc.(int), el.(int))})
 		}))
 	
-	}))
+	})
 	println("#sets:", len(sets))
 	fmt.Println("#Attempts:", Len(attempts))
 	println("results...")
@@ -65,12 +65,10 @@ func main() {
 		label, rolls := First2(el.(Seq))
 		fmt.Printf("%s: %d\n", label, Len(rolls.(Seq)))
 	})
-	cattempts := Concurrent(attempts)
-	Do(cattempts, func(el El) {
+	Do(CFlatMap(attempts, func(el El) Seq {
 		label, sc := First2(el.(Seq))
-		Do(cattempts, func(del El){
-			rolls := 0
-			wins := 0
+		return CMap(attempts, func(del El) El {
+			rolls, wins := 0, 0
 			margins := map[int]int{}
 			dlabel, dsc := First2(del.(Seq))
 			Do(Product(From(sc,dsc)), func(rel El){
@@ -81,19 +79,28 @@ func main() {
 					wins++
 					margins[margin]++
 				}
+				
 			})
-			fmt.Printf("%s vs %s rolls: %d wins: %d margins:", label, dlabel, rolls, wins)
-			for i := 1; i <= 9; i++ {
-				v := margins[i]
-				if v > 0 {
-					fmt.Printf(" %d %.2f", v, float(v)*100/float(wins))
-				}
-			}
-			println()
-			dumpMargin(wins, margins)
+			return From(label, dlabel, rolls, wins, margins)
 		})
+	}), func(el El){
+		l, d, r, w, m := First5(el.(Seq))
+		printResult(l.(string), d.(string), r.(int), w.(int), m.(map[int]int))
 	})
 }
+
+func printResult(label string, dlabel string, rolls int, wins int, margins map[int]int) {
+	fmt.Printf("%s vs %s rolls: %d wins: %d margins:", label, dlabel, rolls, wins)
+	for i := 1; i <= 9; i++ {
+		v := margins[i]
+		if v > 0 {
+			fmt.Printf(" %d %.2f", v, float(v)*100/float(wins))
+		}
+	}
+	println()
+	dumpMargin(wins, margins)
+}
+
 
 func round(value float) int {
 	floor := int(value)
