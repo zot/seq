@@ -178,53 +178,43 @@ type reply struct {
 }
 
 type swEntry struct {
-	present bool
 	value El
+	present bool
 }
 
-// SlidingWindow is a vector with limited capacity and a base
+// SlidingWindow is a vector with limited capacity (power of 2) and a base
 type SlidingWindow struct {
-	start, base, count int
+	start, base, count, mask int
 	values []swEntry
 }
 // NewSlidingWindow creates a new SlidingWindow with capacity size
-func NewSlidingWindow(size int) *SlidingWindow {return &SlidingWindow{0, 0, 0, make([]swEntry, size)}}
+func NewSlidingWindow(sz uint) *SlidingWindow {return &SlidingWindow{0, 0, 0, (1 << sz) - 1, make([]swEntry, 1 << sz)}}
 func (r *SlidingWindow) Max() int {return r.base + r.Capacity()}
 func (r *SlidingWindow) Capacity() int {return len(r.values)}
-func (r *SlidingWindow) normalize(index int) int {return (index + r.Capacity()) % r.Capacity()}
+func (r *SlidingWindow) normalize(index int) int {return (index + r.Capacity()) & r.mask}
 func (r *SlidingWindow) IsEmpty() bool {return r.count == 0}
 func (r *SlidingWindow) IsFull() bool {return r.count == r.Capacity()}
 func (r *SlidingWindow) GetFirst() (interface{}, bool) {return r.values[r.start].value, r.values[r.start].present}
 func (r *SlidingWindow) RemoveFirst() (interface{}, bool) {
-	if r.count == 0 {return nil, false}
 	result := r.values[r.start]
-	r.values[r.start] = swEntry{false, nil}
-	if result.present {r.count--}
+	if !result.present {return nil, false}
+	r.values[r.start] = swEntry{nil, false}
+	r.count--
 	r.start = r.normalize(r.start + 1)
 	r.base++
-	return result.value, result.present
-}
-func (r *SlidingWindow) RemoveLast() (interface{}, bool) {
-	if r.count == 0 {return nil, false}
-	end := r.normalize(r.start + r.Capacity() - 1)
-	result := r.values[end]
-	r.values[end] = swEntry{false, nil}
-	if result.present {r.count--}
-	if r.start > 0 {
-		r.start = r.normalize(r.start - 1)
-		r.base--
-	}
-	return result.value, result.present
+	return result.value, true
 }
 func (r *SlidingWindow) Get(index int) (interface{}, bool) {
-	index = r.normalize(index - r.base + r.start)
+	index -= r.base
 	if index < 0 || index >= r.Capacity() {return nil, false}
+	index = r.normalize(index + r.start)
 	value := r.values[index]
 	return value.value, value.present
 }
 func (r *SlidingWindow) Set(index int, value interface{}) bool {
-	index = r.normalize(index - r.base + r.start)
+	index -= r.base
 	if index < 0 || index >= r.Capacity() {return false}
+	index = r.normalize(index + r.start)
 	r.values[index].value = value
 	if !r.values[index].present {
 		r.values[index].present = true
@@ -236,46 +226,49 @@ func (r *SlidingWindow) Set(index int, value interface{}) bool {
 // spawn a goroutine that does the following for each value, with up to size pending at a time:
 //   spawn a goroutine to apply f to the value and send the result back in a channel
 // send the results in order to the ouput channel as they are completed
-func CMap(s Seq, f func(el El) El, sizeOpt... int) Seq {
-	size := 64
-	if len(sizeOpt) > 0 {size = sizeOpt[0]}
+func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) Seq {
+	sizePower := uint(6)
+	if len(sizePowerOpt) > 0 {sizePower = sizePowerOpt[0]}
+	size := 1 << sizePower
 	return Gen(func(output SeqChan){
-println("spawn")
+//println("spawn")
 		//punt and convert sequence to concurrent
 		//maybe someday we'll handle SequentialSequences separately
 		input := Concurrent(s)()
-		go func(){
-			window := NewSlidingWindow(size)
-			replyChannel := make(chan reply)
-			inputCount, pendingInput, pendingOutput := 0, 0, 0
-			inputClosed := false
-			for {
-				first, hasFirst := window.GetFirst()
-				ic, oc, rc := input, output, replyChannel
-				if !hasFirst {oc = nil}
-				if inputClosed || pendingInput >= size {ic = nil}
-				if pendingOutput >= size {rc = nil}
-				select {
-				case oc <- first:
-					window.RemoveFirst()
-					pendingOutput--
-				case inputElement := <- ic:
-					if closed(ic) {
-						inputClosed = true
-					} else {
-						go func(index int, value interface{}) {
-							replyChannel <- reply{index, f(value)}
-						}(inputCount, inputElement)
-						inputCount++
-						pendingInput++
-					}
-				case replyElement := <- rc:
-					window.Set(replyElement.index, replyElement.result)
-					pendingInput--
-					pendingOutput++
+//println("spawn")
+		window := NewSlidingWindow(sizePower)
+		replyChannel := make(chan reply)
+		inputCount, pendingInput, pendingOutput := 0, 0, 0
+		inputClosed := false
+//println("START")
+		for !inputClosed || pendingInput > 0 || pendingOutput > 0 {
+			first, hasFirst := window.GetFirst()
+			ic, oc, rc := input, output, replyChannel
+			if !hasFirst {oc = nil}
+			if inputClosed || pendingInput >= size {ic = nil}
+			if pendingOutput >= size {rc = nil}
+			select {
+			case oc <- first:
+				window.RemoveFirst()
+				pendingOutput--
+			case inputElement := <- ic:
+				if closed(ic) {
+					inputClosed = true
+				} else {
+					go func(index int, value interface{}) {
+						replyChannel <- reply{index, f(value)}
+					}(inputCount, inputElement)
+					inputCount++
+					pendingInput++
 				}
+			case replyElement := <- rc:
+				window.Set(replyElement.index, replyElement.result)
+				pendingInput--
+				pendingOutput++
 			}
-		}()
+		}
+//println("DONE AFTER", inputCount, "ITEMS")
+		close(replyChannel)
 	})
 }
 
@@ -287,7 +280,7 @@ func SFlatMap(s Seq, f func(i El) Seq) Seq {
 	return (*SequentialSeq)(&vec)
 }
 
-func CFlatMap(s Seq, f func(i El) Seq, sizeOpt... int) Seq {
+func CFlatMap(s Seq, f func(i El) Seq, sizeOpt... uint) Seq {
 	return Gen(func(c SeqChan){
 		Do(CMap(s, func(e El)El{return f(e)}, sizeOpt...), func(sub El){
 			Do(sub.(Seq), func(el El){c <- el})

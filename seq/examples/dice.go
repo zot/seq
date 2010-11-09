@@ -39,9 +39,9 @@ func main() {
 	rank := map[Seq]int{d4:0, d6:1, d8:2, d10:3}
 	sets := map[string]int{}
 	//attempts is [[label, [score, ...]]...]
-println("dice...")
-CDo(dice, func(el El){Prettyln(el, names)})
-println("done")
+//println("dice...")
+//CDo(Product(From(dice,dice)), func(el El){Prettyln(el, names)})
+//println("done")
 //Prettyln(FlatMap(From(1,2,3,4), func(el El)Seq{
 //		return From("a", el)
 //	}))
@@ -74,14 +74,13 @@ println("done")
 		label, rolls := First2(el.(Seq))
 		fmt.Printf("%s: %d\n", label, Len(rolls.(Seq)))
 	})
-	CDo(attempts, func(el El) {
+	Do(CFlatMap(attempts, func(el El) Seq {
 		label, sc := First2(el.(Seq))
-		CDo(attempts, func(del El) {
-			rolls := 0
-			wins := 0
+		return CMap(attempts, func(del El) El {
+			rolls, wins := 0, 0
 			margins := map[int]int{}
 			dlabel, dsc := First2(del.(Seq))
-			CDo(Product(From(sc,dsc)), func(rel El){
+			Do(Product(From(sc,dsc)), func(rel El){
 				rolls++
 				attack, defense := First2(rel.(Seq))
 				margin := attack.(int) - defense.(int)
@@ -89,19 +88,28 @@ println("done")
 					wins++
 					margins[margin]++
 				}
+				
 			})
-			fmt.Printf("%s vs %s rolls: %d wins: %d margins:", label, dlabel, rolls, wins)
-			for i := 1; i <= 9; i++ {
-				v := margins[i]
-				if v > 0 {
-					fmt.Printf(" %d %.2f", v, float(v)*100/float(wins))
-				}
-			}
-			println()
-			dumpMargin(wins, margins)
+			return From(label, dlabel, rolls, wins, margins)
 		})
+	}), func(el El){
+		l, d, r, w, m := First5(el.(Seq))
+		printResult(l.(string), d.(string), r.(int), w.(int), m.(map[int]int))
 	})
 }
+
+func printResult(label string, dlabel string, rolls int, wins int, margins map[int]int) {
+	fmt.Printf("%s vs %s rolls: %d wins: %d margins:", label, dlabel, rolls, wins)
+	for i := 1; i <= 9; i++ {
+		v := margins[i]
+		if v > 0 {
+			fmt.Printf(" %d %.2f", v, float(v)*100/float(wins))
+		}
+	}
+	println()
+	dumpMargin(wins, margins)
+}
+
 
 func round(value float) int {
 	floor := int(value)
