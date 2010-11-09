@@ -39,7 +39,16 @@ func main() {
 	rank := map[Seq]int{d4:0, d6:1, d8:2, d10:3}
 	sets := map[string]int{}
 	//attempts is [[label, [score, ...]]...]
-	attempts := Concurrent(Map(Filter(Product(From(dice, dice, dice)), func(d El)bool{
+println("dice...")
+CDo(dice, func(el El){Prettyln(el, names)})
+println("done")
+//Prettyln(FlatMap(From(1,2,3,4), func(el El)Seq{
+//		return From("a", el)
+//	}))
+//Names = names
+//Prettyln(From(dice,dice,dice), names)
+//Prettyln(Product(From(dice,dice,dice)), names)
+	attempts := Map(Filter(Product(From(dice, dice, dice)), func(d El)bool{
 		oldRank := -1
 		result := true
 		Do(d.(Seq), func(set El){
@@ -57,7 +66,7 @@ func main() {
 			return Fold(el.(Seq), 0, func(acc, el El)El{return max(acc.(int), el.(int))})
 		}))
 	
-	}))
+	})
 	println("#sets:", len(sets))
 	fmt.Println("#Attempts:", Len(attempts))
 	println("results...")
@@ -65,15 +74,14 @@ func main() {
 		label, rolls := First2(el.(Seq))
 		fmt.Printf("%s: %d\n", label, Len(rolls.(Seq)))
 	})
-	cattempts := Concurrent(attempts)
-	Do(cattempts, func(el El) {
+	CDo(attempts, func(el El) {
 		label, sc := First2(el.(Seq))
-		Do(cattempts, func(del El){
+		CDo(attempts, func(del El) {
 			rolls := 0
 			wins := 0
 			margins := map[int]int{}
 			dlabel, dsc := First2(del.(Seq))
-			Do(Product(From(sc,dsc)), func(rel El){
+			CDo(Product(From(sc,dsc)), func(rel El){
 				rolls++
 				attack, defense := First2(rel.(Seq))
 				margin := attack.(int) - defense.(int)
