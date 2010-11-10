@@ -13,7 +13,7 @@ import "io"
 import "bytes"
 import "container/vector"
 import "sort"
-import . "github.com/zot/bills-tools/seq"
+import . "github.com/zot/seq"
 //import "reflect"
 
 func add(i int, s Seq) Seq {
