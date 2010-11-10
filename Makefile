@@ -1,5 +1,6 @@
-all:
-	cd seq && gomake
+include $(GOROOT)/src/Make.inc
 
-install:
-	cd seq && gomake install
+TARG=seq
+GOFILES=seq.go
+
+include $(GOROOT)/src/Make.pkg
