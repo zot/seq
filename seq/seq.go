@@ -180,7 +180,7 @@ func SFilter(s Seq, filter func(e El)bool) *SequentialSeq {
 //returns a new ConcurrentSeq consisting of the elements of s for which filter returns true; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
 func CFilter(s Seq, filter func(e El)bool, sizePowerOpt... uint) ConcurrentSeq {
 	return Gen(func(c SeqChan){
-		Do(s, ifFunc(filter, func(el El){c <- el}), sizePowerOpt...)
+		CDo(s, ifFunc(filter, func(el El){c <- el}), sizePowerOpt...)
 	})
 }
 
