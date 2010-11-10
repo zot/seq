@@ -26,15 +26,25 @@ while (line=`{read}) {
 cat <<here > $script
 package main
 import . "fmt"
+here
+if (grep '//BODY' $file > /dev/null) {
+    awk '/\/\/BODY/{exit}skipped{print}!skipped{skipped=1}' < $file >> $script
+}
+cat <<here >> $script
 func main() {
 here
 while (! ~ $#* 0) {
 	echo ('	'$1^' := float64('$2')') >> $script
 	shift 2
 }
-<$file{
-read>/dev/null
-cat >> $script
+if (grep '//BODY' $file > /dev/null) {
+    awk 'yes{print}/\/\/BODY/{yes=1}' < $file >> $script
+}
+if not {
+    <$file{
+	read>/dev/null
+	cat >> $script
+    }
 }
 cat<<here >> $script
 	func() {

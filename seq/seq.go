@@ -103,7 +103,7 @@ func IsEmpty(s Seq) bool {
 	return empty
 }
 
-//returns the first item in a sequence for which f returns true
+//returns the first item in a sequence for which f returns true or nil if none is found
 func Find(s Seq, f func(el El) bool) El {return s.Find(f)}
 
 //applies f to each item in the sequence until f returns false
@@ -117,9 +117,9 @@ func Do(s Seq, f func(el El)) {
 	})
 }
 
-//applies f concurrently to each element of s, in no particular order
-func CDo(s Seq, f func(el El)) {
-	c := CMap(s, func(el El)El{f(el); return nil})()
+//applies f concurrently to each element of s, in no particular order; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
+func CDo(s Seq, f func(el El), sizePowerOpt... uint) {
+	c := CMap(s, func(el El)El{f(el); return nil}, sizePowerOpt...)()
 	for <- c; !closed(c); <- c {}
 }
 
@@ -177,10 +177,10 @@ func SFilter(s Seq, filter func(e El)bool) *SequentialSeq {
 	return (*SequentialSeq)(&vec)
 }
 
-//returns a new ConcurrentSeq consisting of the elements of s for which filter returns true
-func CFilter(s Seq, filter func(e El)bool) ConcurrentSeq {
+//returns a new ConcurrentSeq consisting of the elements of s for which filter returns true; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
+func CFilter(s Seq, filter func(e El)bool, sizePowerOpt... uint) ConcurrentSeq {
 	return Gen(func(c SeqChan){
-		Do(s, ifFunc(filter, func(el El){c <- el}))
+		Do(s, ifFunc(filter, func(el El){c <- el}), sizePowerOpt...)
 	})
 }
 
@@ -253,7 +253,7 @@ func (r *SlidingWindow) Set(index int, value interface{}) bool {
 	return true
 }
 
-//returns a new ConcurrentSeq consisting of the results of appying f to the elements of s
+//returns a new ConcurrentSeq consisting of the results of appying f to the elements of s; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
 func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) ConcurrentSeq {
 // spawn a goroutine that does the following for each value, with up to size pending at a time:
 //   spawn a goroutine to apply f to the value and send the result back in a channel
@@ -309,10 +309,10 @@ func SFlatMap(s Seq, f func(i El) Seq) *SequentialSeq {
 	return (*SequentialSeq)(&vec)
 }
 
-//returns a new ConcurrentSeq consisting of the concatenation of the sequences f returns when applied to all of the elements of s
-func CFlatMap(s Seq, f func(i El) Seq, sizeOpt... uint) ConcurrentSeq {
+//returns a new ConcurrentSeq consisting of the concatenation of the sequences f returns when applied to all of the elements of s; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
+func CFlatMap(s Seq, f func(i El) Seq, sizePowerOpt... uint) ConcurrentSeq {
 	return Gen(func(c SeqChan){
-		Do(CMap(s, func(e El)El{return f(e)}, sizeOpt...), func(sub El){
+		Do(CMap(s, func(e El)El{return f(e)}, sizePowerOpt...), func(sub El){
 			Output(sub.(Seq), c)
 		})
 	})
@@ -432,7 +432,7 @@ func CUpto(limit int) ConcurrentSeq {
 	})
 }
 
-//returns the first item in a sequence for which f returns true
+//returns the first item in a sequence for which f returns true or nil if none is found
 func (s ConcurrentSeq) Find(f func(el El)bool) El {
 	c := s()
 	defer close(c)
@@ -500,7 +500,7 @@ func AUpto(limit int) *SequentialSeq {
 	return (*SequentialSeq)(&a)
 }
 
-//returns the first item in a sequence for which f returns true
+//returns the first item in a sequence for which f returns true or nil if none is found
 func (s *SequentialSeq) Find(f func(el El)bool) El {
 	for i := 0; i < len(*s); i++ {
 		if f((*s)[i]) {return (*s)[i]}
