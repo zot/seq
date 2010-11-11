@@ -215,6 +215,8 @@ func NewSlidingWindow(sz uint) *SlidingWindow {return &SlidingWindow{0, 0, 0, (1
 func (r *SlidingWindow) Max() int {return r.base + r.Capacity() - 1}
 //returns the size of the window
 func (r *SlidingWindow) Capacity() int {return len(r.values)}
+//returns the number of items in the window
+func (r *SlidingWindow) Count() int {return r.count}
 func (r *SlidingWindow) normalize(index int) int {return (index + r.Capacity()) & r.mask}
 //returns whether the window is empty
 func (r *SlidingWindow) IsEmpty() bool {return r.count == 0}
@@ -267,19 +269,17 @@ func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) ConcurrentSeq {
 		input := Concurrent(s)()
 		window := NewSlidingWindow(sizePower)
 		replyChannel := make(chan reply)
-		inputCount, pendingInput, pendingOutput := 0, 0, 0
+		inputCount, pendingInput := 0, 0
 		inputClosed := false
 		defer close(replyChannel)
-		for !inputClosed || pendingInput > 0 || pendingOutput > 0 {
+		for !inputClosed || pendingInput > 0 || window.Count() > 0 {
 			first, hasFirst := window.GetFirst()
 			ic, oc, rc := input, output, replyChannel
 			if !hasFirst {oc = nil}
 			if inputClosed || pendingInput >= size {ic = nil}
-			if pendingOutput >= size {rc = nil}
+			if window.Count() >= size {rc = nil}
 			select {
-			case oc <- first:
-				window.RemoveFirst()
-				pendingOutput--
+			case oc <- first: window.RemoveFirst()
 			case inputElement := <- ic:
 				if closed(ic) {
 					inputClosed = true
@@ -293,7 +293,6 @@ func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) ConcurrentSeq {
 			case replyElement := <- rc:
 				window.Set(replyElement.index, replyElement.result)
 				pendingInput--
-				pendingOutput++
 			}
 		}
 	})
