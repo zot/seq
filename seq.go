@@ -8,38 +8,39 @@ import "fmt"
 import "io"
 import "os"
 import "container/vector"
+import "reflect"
 
 // convenience alias for sequence elements
 type El interface{}
-// basic sequence support
+// main type
+type Sequence struct {
+	S Seq
+}
+// interface for basic sequence support
 type Seq interface {
 	Find(f func(i El)bool) El
 	Rest() Seq
 	Len() int
-	Append(s2 Seq) Seq
-	Prepend(s2 Seq) Seq
-	Filter(filter func(e El) bool) Seq
-	Map(f func(i El) El) Seq
-	FlatMap(f func(i El) Seq) Seq
+	IsConcurrent() bool
 }
 
 //convert a sequence to a concurrent sequence (if necessary)
-func Concurrent(s Seq) ConcurrentSeq {
-	switch seq := s.(type) {case ConcurrentSeq: return seq}
-	return Gen(func(c SeqChan){Output(s, c)})
+func (s Sequence) Concurrent() Sequence {
+	switch seq := s.S.(type) {case ConcurrentSeq: return s}
+	return Gen(func(c SeqChan){s.Output(c)})
 }
 
 //convert a sequence to a sequential sequence (if necessary)
-func Sequential(s Seq) *SequentialSeq {
-	switch seq := s.(type) {case *SequentialSeq: return seq}
-	return SMap(s, func(el El)El{return el})
+func (s Sequence) Sequential() Sequence {
+	switch seq := s.S.(type) {case *SequentialSeq: return s}
+	return s.SMap(func(el El)El{return el})
 }
 
 //returns a new array of the first N items
-func FirstN(s Seq, n int) []interface{} {
+func (s Sequence) FirstN(n int) []interface{} {
 	r := make([]interface{}, n)
 	x := 0
-	Find(s, func(el El)bool{
+	s.Find(func(el El)bool{
 		r[x] = el
 		x++
 		return x == n
@@ -48,32 +49,32 @@ func FirstN(s Seq, n int) []interface{} {
 }
 
 //convenience function with multiple return values
-func First2(s Seq) (a, b interface{}) {
-	r := FirstN(s, 2)
+func (s Sequence) First2() (a, b interface{}) {
+	r := s.FirstN(2)
 	return r[0], r[1]
 }
 
 //convenience function with multiple return values
-func First3(s Seq) (a, b, c interface{}) {
-	r := FirstN(s, 3)
+func (s Sequence) First3() (a, b, c interface{}) {
+	r := s.FirstN(3)
 	return r[0], r[1], r[2]
 }
 
 //convenience function with multiple return values
-func First4(s Seq) (a, b, c, d interface{}) {
-	r := FirstN(s, 4)
+func (s Sequence) First4() (a, b, c, d interface{}) {
+	r := s.FirstN(4)
 	return r[0], r[1], r[2], r[3]
 }
 
 //convenience function with multiple return values
-func First5(s Seq) (a, b, c, d, e interface{}) {
-	r := FirstN(s, 5)
+func (s Sequence) First5() (a, b, c, d, e interface{}) {
+	r := s.FirstN(5)
 	return r[0], r[1], r[2], r[3], r[4]
 }
 
 //convenience function with multiple return values
-func First6(s Seq) (a, b, c, d, e, f interface{}) {
-	r := FirstN(s, 6)
+func (s Sequence) First6() (a, b, c, d, e, f interface{}) {
+	r := s.FirstN(6)
 	return r[0], r[1], r[2], r[3], r[4], r[5]
 }
 
@@ -84,9 +85,9 @@ func IsSeq(s interface{}) bool {
 }
 
 //returns the first item in a sequence
-func First(s Seq) interface{} {
+func (s Sequence) First() interface{} {
 	var result interface{}
-	s.Find(func(el El)bool{
+	s.S.Find(func(el El)bool{
 		result = el
 		return true
 	})
@@ -94,9 +95,9 @@ func First(s Seq) interface{} {
 }
 
 //returns whether a sequence is empty
-func IsEmpty(s Seq) bool {
+func (s Sequence) IsEmpty() bool {
 	empty := true
-	s.Find(func(el El)bool{
+	s.S.Find(func(el El)bool{
 		empty = false
 		return true
 	})
@@ -104,94 +105,110 @@ func IsEmpty(s Seq) bool {
 }
 
 //returns the first item in a sequence for which f returns true or nil if none is found
-func Find(s Seq, f func(el El) bool) El {return s.Find(f)}
+func (s Sequence) Find(f func(el El) bool) El {return s.S.Find(f)}
 
 //applies f to each item in the sequence until f returns false
-func While(s Seq, f func(el El) bool) {s.Find(func(el El)bool{return !f(el)})}
+func (s Sequence) While(f func(el El) bool) {s.S.Find(func(el El)bool{return !f(el)})}
 
 //applies f to each item in the sequence
-func Do(s Seq, f func(el El)) {
-	s.Find(func(el El)bool{
+func (s Sequence) Do(f func(el El)) {
+	s.S.Find(func(el El)bool{
 		f(el)
 		return false
 	})
 }
 
 //applies f concurrently to each element of s, in no particular order; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
-func CDo(s Seq, f func(el El), sizePowerOpt... uint) {
-	c := CMap(s, func(el El)El{f(el); return nil}, sizePowerOpt...)()
+func (s Sequence) CDo(f func(el El), sizePowerOpt... uint) {
+	c := s.CMap(func(el El)El{f(el); return nil}, sizePowerOpt...).S.(ConcurrentSeq)()
 	for <- c; !closed(c); <- c {}
 }
 
 //returns the length of s
-func Len(s Seq) int {return s.Len()}
+func (s Sequence) Len() int {return s.S.Len()}
 
 //sends each item of s to c
-func Output(s Seq, c SeqChan) {Do(s, func(el El){c <- el})}
+func (s Sequence) Output(c SeqChan) {s.Do(func(el El){c <- el})}
 
 //returns a new sequence of the same type as s consisting of all of the elements of s except for the first one
-func Rest(s Seq) Seq {return s.Rest()}
+func (s Sequence) Rest() Sequence {return Sequence{s.S.Rest()}}
 
 //returns a new sequence of the same type as s1 that appends this s1 and s2
-func Append(s1 Seq, s2 Seq) Seq {return s1.Append(s2)}
+func (s1 Sequence) Append(s2 Sequence) Sequence {
+	if s1.S.IsConcurrent() {return s1.CAppend(s2)}
+	return s1.SAppend(s2)
+}
+
+//returns a new sequence of the same type as s1 that appends this s1 and s2
+func (s1 Sequence) Prepend(s2 Sequence) Sequence {
+	if s1.S.IsConcurrent() {return s2.CAppend(s1)}
+	return s2.SAppend(s1)
+}
 
 //append a sequence to a vector
-func AppendToVector(vec *vector.Vector, s Seq) {
-	switch arg := s.(type) {
+func (s Sequence) AppendToVector(vec *vector.Vector) {
+	switch arg := s.S.(type) {
 	case *SequentialSeq: vec.AppendVector((*vector.Vector)(arg))
-	default: Do(s, func(el El){vec.Push(el)})
+	default: s.Do(func(el El){vec.Push(el)})
 	}
 }
 
 //returns a new SequentialSeq which consists of appending s and s2
-func SAppend(s Seq, s2 Seq) *SequentialSeq {
-	vec := make(vector.Vector, 0, quickLen(s, 8) + quickLen(s2, 8))
-	AppendToVector(&vec, s)
-	AppendToVector(&vec, s2)
-	return (*SequentialSeq)(&vec)
+func (s Sequence) SAppend(s2 Sequence) Sequence {
+	vec := make(vector.Vector, 0, s.quickLen(8) + s2.quickLen(8))
+	s.AppendToVector(&vec)
+	s2.AppendToVector(&vec)
+	return Sequence{(*SequentialSeq)(&vec)}
 }
 
 //returns a new ConcurrentSeq which consists of appending s and s2
-func CAppend(s Seq, s2 Seq) ConcurrentSeq {
+func (s Sequence) CAppend(s2 Sequence) Sequence {
 	return Gen(func(c SeqChan){
-		Output(s, c)
-		Output(s2, c)
+		s.Output(c)
+		s2.Output(c)
 	})
 }
 
-func quickLen(s Seq, d int) int {
-	switch seq := s.(type) {case *SequentialSeq: return s.Len()}
+//if s is a SequentialSeq, return its length, otherwise return d
+func (s Sequence) quickLen(d int) int {
+	switch seq := s.S.(type) {case *SequentialSeq: return s.Len()}
 	return d
 }
 
 //returns a new sequence of the same type as s consisting of the elements of s for which filter returns true
-func Filter(s Seq, filter func(e El)bool) Seq {return s.Filter(filter)}
+func (s Sequence) Filter(filter func(e El)bool) Sequence {
+	if s.S.IsConcurrent() {return s.CFilter(filter)}
+	return s.SFilter(filter)
+}
 
 func ifFunc(condition func(e El)bool, op func(e El)) func(el El){return func(el El){if condition(el) {op(el)}}}
 
 //returns a new SequentialSeq consisting of the elements of s for which filter returns true
-func SFilter(s Seq, filter func(e El)bool) *SequentialSeq {
+func (s Sequence) SFilter(filter func(e El)bool) Sequence {
 	//continue shrinking
-	vec := make(vector.Vector, 0, quickLen(s, 8))
-	Do(s, ifFunc(filter, func(el El){vec.Push(el)}))
-	return (*SequentialSeq)(&vec)
+	vec := make(vector.Vector, 0, s.quickLen(8))
+	s.Do(ifFunc(filter, func(el El){vec.Push(el)}))
+	return Sequence{(*SequentialSeq)(&vec)}
 }
 
 //returns a new ConcurrentSeq consisting of the elements of s for which filter returns true; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
-func CFilter(s Seq, filter func(e El)bool, sizePowerOpt... uint) ConcurrentSeq {
+func (s Sequence) CFilter(filter func(e El)bool, sizePowerOpt... uint) Sequence {
 	return Gen(func(c SeqChan){
-		CDo(s, ifFunc(filter, func(el El){c <- el}), sizePowerOpt...)
+		s.CDo(ifFunc(filter, func(el El){c <- el}), sizePowerOpt...)
 	})
 }
 
 //returns a new sequence of the same type as s consisting of the results of appying f to the elements of s
-func Map(s Seq, f func(el El) El) Seq {return s.Map(f)}
+func (s Sequence) Map(f func(el El) El) Sequence {
+	if s.S.IsConcurrent() {return s.CMap(f)}
+	return s.SMap(f)
+}
 
 //returns a new SequentialSeq consisting of the results of appying f to the elements of s
-func SMap(s Seq, f func(i El)El) *SequentialSeq {
-	vec := make(vector.Vector, 0, quickLen(s, 8))
-	Do(s, func(el El){vec.Push(f(el))})
-	return (*SequentialSeq)(&vec)
+func (s Sequence) SMap(f func(i El)El) Sequence {
+	vec := make(vector.Vector, 0, s.quickLen(8))
+	s.Do(func(el El){vec.Push(f(el))})
+	return Sequence{(*SequentialSeq)(&vec)}
 }
 
 type reply struct {
@@ -256,7 +273,7 @@ func (r *SlidingWindow) Set(index int, value interface{}) bool {
 }
 
 //returns a new ConcurrentSeq consisting of the results of appying f to the elements of s; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
-func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) ConcurrentSeq {
+func (s Sequence) CMap(f func(el El) El, sizePowerOpt... uint) Sequence {
 // spawn a goroutine that does the following for each value, with up to size pending at a time:
 //   spawn a goroutine to apply f to the value and send the result back in a channel
 // send the results in order to the ouput channel as they are completed
@@ -266,7 +283,7 @@ func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) ConcurrentSeq {
 	return Gen(func(output SeqChan){
 		//punt and convert sequence to concurrent
 		//maybe someday we'll handle SequentialSequences separately
-		input := Concurrent(s)()
+		input := s.Concurrent().S.(ConcurrentSeq)()
 		window := NewSlidingWindow(sizePower)
 		replyChannel := make(chan reply)
 		inputCount, pendingInput := 0, 0
@@ -299,47 +316,50 @@ func CMap(s Seq, f func(el El) El, sizePowerOpt... uint) ConcurrentSeq {
 }
 
 //returns a new sequence of the same type as s consisting of the concatenation of the sequences f returns when applied to all of the elements of s
-func FlatMap(s Seq, f func(el El) Seq) Seq {return s.FlatMap(f)}
+func (s Sequence) FlatMap(f func(el El) Sequence) Sequence {
+	if s.S.IsConcurrent() {return s.CFlatMap(f)}
+	return s.SFlatMap(f)
+}
 
 //returns a new SequentialSeq consisting of the concatenation of the sequences f returns when applied to all of the elements of s
-func SFlatMap(s Seq, f func(i El) Seq) *SequentialSeq {
-	vec := make(vector.Vector, 0, quickLen(s, 8))
-	Do(s, func(e El){Do(f(e).(Seq), func(sub El){vec.Push(sub)})})
-	return (*SequentialSeq)(&vec)
+func (s Sequence) SFlatMap(f func(i El) Sequence) Sequence {
+	vec := make(vector.Vector, 0, s.quickLen(8))
+	s.Do(func(e El){f(e).Do(func(sub El){vec.Push(sub)})})
+	return Sequence{(*SequentialSeq)(&vec)}
 }
 
 //returns a new ConcurrentSeq consisting of the concatenation of the sequences f returns when applied to all of the elements of s; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
-func CFlatMap(s Seq, f func(i El) Seq, sizePowerOpt... uint) ConcurrentSeq {
+func (s Sequence) CFlatMap(f func(i El) Sequence, sizePowerOpt... uint) Sequence {
 	return Gen(func(c SeqChan){
-		Do(CMap(s, func(e El)El{return f(e)}, sizePowerOpt...), func(sub El){
-			Output(sub.(Seq), c)
+		s.CMap(func(e El)El{return f(e)}, sizePowerOpt...).Do(func(sub El){
+			sub.(Sequence).Output(c)
 		})
 	})
 }
 
 //returns the result of applying f to its previous value and each element of s in succession, starting with init as the initial "previous value" for f
-func Fold(s Seq, init interface{}, f func(acc, el El)El) interface{} {
-	Do(s, func(el El){init = f(init, el)})
+func (s Sequence) Fold(init interface{}, f func(acc, el El)El) interface{} {
+	s.Do(func(el El){init = f(init, el)})
 	return init
 }
 
 //returns a new sequence of the same type as s consisting of all possible combinations of the elements of s of size number or smaller
-func Combinations(s Seq, number int) Seq {
-	if number == 0 || IsEmpty(s) {return From(From())}
-	return Combinations(s.Rest(), number).Prepend(Combinations(s.Rest(), number - 1).Map(func(el El)El{
-		return el.(Seq).Prepend(From(First(s)))
+func (s Sequence) Combinations(number int) Sequence {
+	if number == 0 || s.IsEmpty() {return From(From())}
+	return s.Rest().Combinations(number).Prepend(s.Rest().Combinations(number - 1).Map(func(el El)El{
+		return el.(Sequence).Prepend(From(s.First()))
 	}))
 }
 
 //returns the product of the elements of sequences, where each element is a sequence
-func Product(sequences Seq) Seq {
-	return Fold(sequences, From(From()), func(result, each El)El{
-		return result.(Seq).FlatMap(func(seq El)Seq{
-			return each.(Seq).Map(func(i El) El {
-				return seq.(Seq).Append(From(i))
+func (sequences Sequence) Product() Sequence {
+	return sequences.Fold(From(From()), func(result, each El)El{
+		return result.(Sequence).FlatMap(func(seq El)Sequence{
+			return each.(Sequence).Map(func(i El) El {
+				return seq.(Sequence).Append(From(i))
 			})
 		})
-	}).(Seq)
+	}).(Sequence)
 }
 
 //pretty print an object, followed by a newline.  Optional arguments are a map of names (map[interface{}]string) and an io.Writer to write output to
@@ -362,32 +382,53 @@ func Pretty(s interface{}, args... interface{}) io.Writer {
 	return writer
 }
 
+func hashable(v interface{}) bool {
+	k := reflect.Typeof(v).Kind()
+	return k < reflect.Array || k == reflect.Ptr || k == reflect.UnsafePointer
+}
+
+func getName(names map[interface{}]string, v interface{}) (string, bool) {
+	_, seq := v.(Sequence)
+	if seq {
+		v = v.(Sequence).S
+	}
+	if hashable(v) {
+		kk, vv := names[v]
+		return kk, vv
+	}
+	return "", false
+}
+
+func hasName(names map[interface{}]string, v interface{}) bool {
+	_, has := getName(names, v)
+	return has
+}
+
 //This pretty is ugly :)
 func prettyLevel(s interface{}, level int, names map[interface{}]string, w io.Writer) {
-	name, hasName := names[s]
-	if hasName {
+	name, has := getName(names, s)
+	if has {
 		fmt.Fprint(w, name)
 	} else switch arg := s.(type) {
+	case Sequence: prettyLevel(arg.S, level, names, w)
 	case Seq:
 		fmt.Fprintf(w, "%*s%s", level, "", "[")
 		first := true
 		innerSeq := false
 		named := false
-		Do(arg, func(v El) {
-			_, named = names[v]
-			_,innerSeq = v.(Seq)
+		Sequence{arg}.Do(func(v El) {
+			named = hasName(names, v)
+			_,innerSeq = v.(Sequence)
 			if first {
 				first = false
-				if !named && innerSeq {
-					fmt.Fprintln(w)
-				}
+				if !named && innerSeq {fmt.Fprintln(w)}
 			} else if !named && innerSeq {
 				fmt.Fprintln(w, ",")
 			} else {
 				fmt.Fprint(w, ", ")
 			}
 			if innerSeq {
-				prettyLevel(v.(Seq), level + 4, names, w)
+				prettyLevel(v.(Sequence), level + 4, names, w)
 			} else {
 				fmt.Fprintf(w, "%v", v)
 			}
@@ -411,25 +452,28 @@ type SeqChan chan interface{}
 type ConcurrentSeq func()SeqChan
 
 //returns a new ConcurrentSeq which consists of all of the items that f writes to the channel
-func Gen(f func(c SeqChan)) ConcurrentSeq {
-	return func() SeqChan {
+func Gen(f func(c SeqChan)) Sequence {
+	return Sequence{ConcurrentSeq(func() SeqChan {
 		c := make(SeqChan)
 		go func() {
 			defer close(c)
 			f(c)
 		}()
 		return c
-	}
+	})}
 }
 
 //returns a new ConcurrentSeq consisting of the numbers from 0 to limit, in succession
-func CUpto(limit int) ConcurrentSeq {
-	return Gen(func(c SeqChan) {
+func CUpto(limit int) Sequence {
+	return Sequence(Gen(func(c SeqChan) {
 		for i := 0; i < limit; i++ {
 			c <- i
 		}
-	})
+	}))
 }
+
+//ConcurrentSeqs are concurrent; return true
+func (s ConcurrentSeq) IsConcurrent() bool {return true}
 
 //returns the first item in a sequence for which f returns true or nil if none is found
 func (s ConcurrentSeq) Find(f func(el El)bool) El {
@@ -453,31 +497,17 @@ func (s ConcurrentSeq) Rest() Seq {
 //returns the length of s
 func (s ConcurrentSeq) Len() int {
 	len := 0
-	Do(s, func(el El){
-		len++
+	s.Find(func(el El)bool{
+		len++;
+		return false
 	})
 	return len
 }
 
-//returns a new ConcurrentSeq that appends this one and s2
-func (s ConcurrentSeq) Append(s2 Seq) Seq {return CAppend(s, s2)}
-
-//returns a new ConcurrentSeq that appends s2 and this one
-func (s ConcurrentSeq) Prepend(s2 Seq) Seq {return CAppend(s2, s)}
-
-//returns a new ConcurrentSeq consisting of the elements of s for which filter returns true
-func (s ConcurrentSeq) Filter(f func(e El)bool) Seq {return CFilter(s, f)}
-
-//returns a new ConcurrentSeq consisting of the results of appying f to the elements of s
-func (s ConcurrentSeq) Map(f func(i El)El) Seq {return CMap(s, f)}
-
-//returns a new ConcurrentSeq consisting of the concatenation of the sequences f returns when applied to all of the elements of s
-func (s ConcurrentSeq) FlatMap(f func(i El) Seq) Seq {return CFlatMap(s, f)}
-
 //returns a new SequentialSeq constructed by recursively converting nested
 //ConcurrentSeqs to SequentialSeqs.  Does not descend into nested sequential sequences
-func (s ConcurrentSeq) ToSequentialSeq() *SequentialSeq {
-	return SMap(s, func(el El)El{
+func (s ConcurrentSeq) ToSequentialSeq() Sequence {
+	return Sequence{s}.SMap(func(el El)El{
 		switch seq := el.(type) {case ConcurrentSeq: return seq.ToSequentialSeq()}
 		return el
 	})
@@ -488,16 +518,19 @@ func (s ConcurrentSeq) ToSequentialSeq() *SequentialSeq {
 type SequentialSeq []interface{}
 
 //returns a new SequentialSeq consisting of els
-func From(els... interface{}) *SequentialSeq {return (*SequentialSeq)(&els)}
+func From(els... interface{}) Sequence {return Sequence{(*SequentialSeq)(&els)}}
 
 //returns a new SequentialSeq consisting of the numbers from 0 to limit, in succession
-func AUpto(limit int) *SequentialSeq {
+func SUpto(limit int) Sequence {
 	a := make([]interface{}, limit)
 	for i := 0; i < limit; i++ {
 		a[i] = i
 	}
-	return (*SequentialSeq)(&a)
+	return Sequence{(*SequentialSeq)(&a)}
 }
+
+//SequentialSeqs are not concurrent; return false
+func (s *SequentialSeq) IsConcurrent() bool {return false}
 
 //returns the first item in a sequence for which f returns true or nil if none is found
 func (s *SequentialSeq) Find(f func(el El)bool) El {
@@ -515,18 +548,3 @@ func (s *SequentialSeq) Rest() Seq {
 
 //returns the length of s
 func (s *SequentialSeq) Len() int {return len(*s)}
-
-//returns a new SequentialSeq that appends this one and s2
-func (s *SequentialSeq) Append(s2 Seq) Seq {return SAppend(s, s2)}
-
-//returns a new SequentialSeq that appends s2 and this one
-func (s *SequentialSeq) Prepend(s2 Seq) Seq {return SAppend(s2, s)}
-
-//returns a new SequentialSeq consisting of the elements of s for which filter returns true
-func (s *SequentialSeq) Filter(f func(e El)bool) Seq {return SFilter(s, f)}
-
-//returns a new SequentialSeq consisting of the results of appying f to the elements of s
-func (s *SequentialSeq) Map(f func(i El)El) Seq {return SMap(s, f)}
-
-//returns a new SequentialSeq consisting of the concatenation of the sequences f returns when applied to all of the elements of s
-func (s *SequentialSeq) FlatMap(f func(i El) Seq) Seq {return SFlatMap(s, f)}

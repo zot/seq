@@ -16,7 +16,7 @@ import "sort"
 import . "github.com/zot/seq"
 //import "reflect"
 
-func add(i int, s Seq) Seq {
+func add(i int, s Sequence) Sequence {
 	return s.Map(func(el El)El {
 		return i + el.(int)
 	})
@@ -30,50 +30,50 @@ func max(a, b int) int {
 }
 
 func main() {
-	d4 := add(1, AUpto(4))
-	d6 := add(1, AUpto(6))
-	d8 := add(1, AUpto(8))
-	d10 := add(1, AUpto(10))
-	names := map[interface{}]string{d4:"d4", d6:"d6", d8:"d8", d10:"d10"}
+	d4 := add(1, SUpto(4))
+	d6 := add(1, SUpto(6))
+	d8 := add(1, SUpto(8))
+	d10 := add(1, SUpto(10))
+	names := map[interface{}]string{d4.S:"d4", d6.S:"d6", d8.S:"d8", d10.S:"d10"}
 	dice := From(d4, d6, d8, d10)
-	rank := map[Seq]int{d4:0, d6:1, d8:2, d10:3}
+	rank := map[Seq]int{d4.S:0, d6.S:1, d8.S:2, d10.S:3}
 	sets := map[string]int{}
 	//attempts is [[label, [score, ...]]...]
-	attempts := Map(Filter(Product(From(dice, dice, dice)), func(d El)bool{
+	attempts := From(dice, dice, dice).Product().Filter(func(d El)bool{
 		oldRank := -1
 		result := true
-		Do(d.(Seq), func(set El){
-			newRank := rank[set.(Seq)]
+		// change this to a fold!
+		d.(Sequence).Do(func(set El){
+			newRank := rank[set.(Sequence).S]
 			result = result && newRank >= oldRank
 			oldRank = newRank
 		})
 		return result
-	}), func(el El)El{
+	}).Map(func(el El)El{
 		buf := bytes.NewBuffer(make([]byte, 0, 10))
 		io.WriteString(buf, "<")
-		Pretty(el.(Seq), names, buf)
+		Pretty(el.(Sequence), names, buf)
 		io.WriteString(buf, ">")
-		return From(buf.String(), Map(Product(el.(Seq)), func(el El)El{
-			return Fold(el.(Seq), 0, func(acc, el El)El{return max(acc.(int), el.(int))})
+		return From(buf.String(), el.(Sequence).Product().Map(func(el El)El{
+			return el.(Sequence).Fold(0, func(acc, el El)El{return max(acc.(int), el.(int))})
 		}))
-	
 	})
 	println("#sets:", len(sets))
-	fmt.Println("#Attempts:", Len(attempts))
+	fmt.Println("#Attempts:", attempts.Len())
 	println("results...")
-	Do(attempts, func(el El){
-		label, rolls := First2(el.(Seq))
-		fmt.Printf("%s: %d\n", label, Len(rolls.(Seq)))
+	attempts.Do(func(el El){
+		label, rolls := el.(Sequence).First2()
+		fmt.Printf("%s: %d\n", label, rolls.(Sequence).Len())
 	})
-	Do(CFlatMap(attempts, func(el El) Seq {
-		label, sc := First2(el.(Seq))
-		return CMap(attempts, func(del El) El {
+	attempts.CFlatMap(func(el El) Sequence {
+		label, sc := el.(Sequence).First2()
+		return attempts.CMap(func(del El) El {
 			rolls, wins := 0, 0
 			margins := map[int]int{}
-			dlabel, dsc := First2(del.(Seq))
-			Do(Product(From(sc,dsc)), func(rel El){
+			dlabel, dsc := del.(Sequence).First2()
+			From(sc,dsc).Product().Do(func(rel El){
 				rolls++
-				attack, defense := First2(rel.(Seq))
+				attack, defense := rel.(Sequence).First2()
 				margin := attack.(int) - defense.(int)
 				if margin > 0 {
 					wins++
@@ -83,8 +83,8 @@ func main() {
 			})
 			return From(label, dlabel, rolls, wins, margins)
 		})
-	}), func(el El){
-		l, d, r, w, m := First5(el.(Seq))
+	}).Do(func(el El){
+		l, d, r, w, m := el.(Sequence).First5()
 		printResult(l.(string), d.(string), r.(int), w.(int), m.(map[int]int))
 	})
 }
