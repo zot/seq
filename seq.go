@@ -7,7 +7,6 @@ package seq
 import "fmt"
 import "io"
 import "os"
-import "container/vector"
 import "reflect"
 
 // convenience alias for sequence elements
@@ -145,20 +144,15 @@ func (s1 Sequence) Prepend(s2 Sequence) Sequence {
 	return s2.SAppend(s1)
 }
 
-//append a sequence to a vector
-func (s Sequence) AppendToVector(vec *vector.Vector) {
-	switch arg := s.S.(type) {
-	case *SequentialSeq: vec.AppendVector((*vector.Vector)(arg))
-	default: s.Do(func(el El){vec.Push(el)})
-	}
+func (s Sequence) ToSlice() []interface{} {
+	return *(*[]interface{})(s.Sequential().S.(*SequentialSeq))
 }
 
 //returns a new SequentialSeq which consists of appending s and s2
 func (s Sequence) SAppend(s2 Sequence) Sequence {
-	vec := make(vector.Vector, 0, s.quickLen(8) + s2.quickLen(8))
-	s.AppendToVector(&vec)
-	s2.AppendToVector(&vec)
-	return Sequence{(*SequentialSeq)(&vec)}
+	slice := s.ToSlice()
+	slice = append(slice, s2.ToSlice()...)
+	return Sequence{(*SequentialSeq)(&slice)}
 }
 
 //returns a new ConcurrentSeq which consists of appending s and s2
@@ -186,9 +180,9 @@ func ifFunc(condition func(e El)bool, op func(e El)) func(el El){return func(el 
 //returns a new SequentialSeq consisting of the elements of s for which filter returns true
 func (s Sequence) SFilter(filter func(e El)bool) Sequence {
 	//continue shrinking
-	vec := make(vector.Vector, 0, s.quickLen(8))
-	s.Do(ifFunc(filter, func(el El){vec.Push(el)}))
-	return Sequence{(*SequentialSeq)(&vec)}
+	slice := make([]interface{}, 0, s.quickLen(8))
+	s.Do(ifFunc(filter, func(el El){slice = append(slice, el)}))
+	return Sequence{(*SequentialSeq)(&slice)}
 }
 
 //returns a new ConcurrentSeq consisting of the elements of s for which filter returns true; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
@@ -206,9 +200,9 @@ func (s Sequence) Map(f func(el El) El) Sequence {
 
 //returns a new SequentialSeq consisting of the results of appying f to the elements of s
 func (s Sequence) SMap(f func(i El)El) Sequence {
-	vec := make(vector.Vector, 0, s.quickLen(8))
-	s.Do(func(el El){vec.Push(f(el))})
-	return Sequence{(*SequentialSeq)(&vec)}
+	slice := make([]interface{}, 0, s.quickLen(8))
+	s.Do(func(el El){slice = append(slice, f(el))})
+	return Sequence{(*SequentialSeq)(&slice)}
 }
 
 type reply struct {
@@ -221,7 +215,8 @@ type swEntry struct {
 	present bool
 }
 
-// a vector with limited capacity (power of 2) and a base
+// like a slice of a sparse vector where capacity is always a power of 2
+// it uses a ring buffer so RemoveFirst is efficient
 type SlidingWindow struct {
 	start, base, count, mask int
 	values []swEntry
@@ -229,16 +224,16 @@ type SlidingWindow struct {
 //creates a new SlidingWindow with capacity size
 func NewSlidingWindow(sz uint) *SlidingWindow {return &SlidingWindow{0, 0, 0, (1 << sz) - 1, make([]swEntry, 1 << sz)}}
 //returns the current maximum available index
-func (r *SlidingWindow) Max() int {return r.base + r.Capacity() - 1}
+func (r *SlidingWindow) Max() int {return r.base + len(r.values) - 1}
 //returns the size of the window
 func (r *SlidingWindow) Capacity() int {return len(r.values)}
 //returns the number of items in the window
 func (r *SlidingWindow) Count() int {return r.count}
-func (r *SlidingWindow) normalize(index int) int {return (index + r.Capacity()) & r.mask}
+func (r *SlidingWindow) normalize(index int) int {return (index + len(r.values)) & r.mask}
 //returns whether the window is empty
 func (r *SlidingWindow) IsEmpty() bool {return r.count == 0}
 //returns whether the window has any available space
-func (r *SlidingWindow) IsFull() bool {return r.count == r.Capacity()}
+func (r *SlidingWindow) IsFull() bool {return r.count == len(r.values)}
 //returns the first item, or nil if there is none, and also returns whether there was an item
 func (r *SlidingWindow) GetFirst() (interface{}, bool) {return r.values[r.start].value, r.values[r.start].present}
 //removes the first item, if there is one, and also returns whether an item was removed
@@ -323,9 +318,9 @@ func (s Sequence) FlatMap(f func(el El) Sequence) Sequence {
 
 //returns a new SequentialSeq consisting of the concatenation of the sequences f returns when applied to all of the elements of s
 func (s Sequence) SFlatMap(f func(i El) Sequence) Sequence {
-	vec := make(vector.Vector, 0, s.quickLen(8))
-	s.Do(func(e El){f(e).Do(func(sub El){vec.Push(sub)})})
-	return Sequence{(*SequentialSeq)(&vec)}
+	slice := make([]interface{}, 0, s.quickLen(8))
+	s.Do(func(e El){f(e).Do(func(sub El){slice = append(slice, sub)})})
+	return Sequence{(*SequentialSeq)(&slice)}
 }
 
 //returns a new ConcurrentSeq consisting of the concatenation of the sequences f returns when applied to all of the elements of s; sizePowerOpt will default to {6} and CMap will allow up to 1 << sizePowerOpt[0] outstanding concurrent instances of f at any time
