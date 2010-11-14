@@ -34,9 +34,9 @@ func main() {
 	d6 := add(1, SUpto(6))
 	d8 := add(1, SUpto(8))
 	d10 := add(1, SUpto(10))
-	names := map[interface{}]string{d4.S:"d4", d6.S:"d6", d8.S:"d8", d10.S:"d10"}
+	names := map[interface{}]string{d4.Seq:"d4", d6.Seq:"d6", d8.Seq:"d8", d10.Seq:"d10"}
 	dice := From(d4, d6, d8, d10)
-	rank := map[Seq]int{d4.S:0, d6.S:1, d8.S:2, d10.S:3}
+	rank := map[Seq]int{d4.Seq:0, d6.Seq:1, d8.Seq:2, d10.Seq:3}
 	sets := map[string]int{}
 	//attempts is [[label, [score, ...]]...]
 	attempts := From(dice, dice, dice).Product().Filter(func(d El)bool{
@@ -44,7 +44,7 @@ func main() {
 		result := true
 		// change this to a fold!
 		d.(Sequence).Do(func(set El){
-			newRank := rank[set.(Sequence).S]
+			newRank := rank[set.(Sequence).Seq]
 			result = result && newRank >= oldRank
 			oldRank = newRank
 		})
