@@ -339,7 +339,9 @@ func (s Sequence) Combinations(number int) Sequence {
 
 //returns the product of the elements of sequences, where each element is a sequence
 func (sequences Sequence) Product() Sequence {
-	return sequences.Fold(From(From()), func(result, each El)El{
+	result := From(From())
+	if sequences.IsConcurrent() {result = result.Concurrent()}
+	return sequences.Fold(result, func(result, each El)El{
 		return result.(Sequence).FlatMap(func(seq El)Sequence{
 			return each.(Sequence).Map(func(i El) El {
 				return seq.(Sequence).Append(From(i))
@@ -347,6 +349,12 @@ func (sequences Sequence) Product() Sequence {
 		})
 	}).(Sequence)
 }
+
+//pretty print an object.  Optional arguments are a map of names (map[interface{}]string) and an io.Writer to write output to
+func (s Sequence) Pretty(args... interface{}) {Pretty(s, args...)}
+
+//pretty print an object, followed by a newline.  Optional arguments are a map of names (map[interface{}]string) and an io.Writer to write output to
+func (s Sequence) Prettyln(args... interface{}) {Prettyln(s, args...)}
 
 //pretty print an object, followed by a newline.  Optional arguments are a map of names (map[interface{}]string) and an io.Writer to write output to
 func Prettyln(s interface{}, rest... interface{}) {

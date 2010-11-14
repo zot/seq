@@ -65,13 +65,14 @@ func main() {
 		label, rolls := el.(Sequence).First2()
 		fmt.Printf("%s: %d\n", label, rolls.(Sequence).Len())
 	})
+//*
 	attempts.CFlatMap(func(el El) Sequence {
 		label, sc := el.(Sequence).First2()
 		return attempts.CMap(func(del El) El {
 			rolls, wins := 0, 0
 			margins := map[int]int{}
 			dlabel, dsc := del.(Sequence).First2()
-			From(sc,dsc).Product().Do(func(rel El){
+			From(sc,dsc).Concurrent().Product().Do(func(rel El){
 				rolls++
 				attack, defense := rel.(Sequence).First2()
 				margin := attack.(int) - defense.(int)
@@ -81,16 +82,83 @@ func main() {
 				}
 				
 			})
-			return From(label, dlabel, rolls, wins, margins)
+			return From(label.(string) + " vs " + dlabel.(string), rolls, wins, margins)
 		})
 	}).Do(func(el El){
-		l, d, r, w, m := el.(Sequence).First5()
-		printResult(l.(string), d.(string), r.(int), w.(int), m.(map[int]int))
+		l, r, w, m := el.(Sequence).First4()
+		printResult(l.(string), r.(int), w.(int), m.(map[int]int))
 	})
+//*/
+/*
+	From(attempts, attempts).Product().CMap(func(el El)El{
+		attacker, defender := el.(Sequence).First2()
+		label, sc := attacker.(Sequence).First2()
+		dlabel, dsc := defender.(Sequence).First2()
+		rolls, wins := 0, 0
+		margins := map[int]int{}
+		From(sc,dsc).Concurrent().Product().Do(func(rel El){
+			rolls++
+			attack, defense := rel.(Sequence).First2()
+			margin := attack.(int) - defense.(int)
+			if margin > 0 {
+				wins++
+				margins[margin]++
+			}
+			
+		})
+		return From(label.(string) + " vs " + dlabel.(string), rolls, wins, margins)
+	}).Do(func(el El){
+		l, r, w, m := el.(Sequence).First4()
+		printResult(l.(string), r.(int), w.(int), m.(map[int]int))
+	})
+//*/
+/*
+	type results struct {
+		wins, rolls int
+		margins map[int]int
+	}
+	rmap := map[string]*results{}
+	lastLabel := ""
+	matches := attempts.CFlatMap(func(el El) Sequence {
+		label, sc := el.(Sequence).First2()
+		return attempts.CFlatMap(func(del El) Sequence {
+			dlabel, dsc := del.(Sequence).First2()
+			return From(sc,dsc).Concurrent().Product().CMap(func(el El)El{
+				attack, defense := el.(Sequence).First2()
+				return From(label.(string) + " vs " + dlabel.(string), attack.(int) - defense.(int))
+			})
+		})
+	})
+	matches.Prettyln(names)
+	println("RESULTS...")
+	matches.Do(func(el El) {
+		lbl, margin := el.(Sequence).First2()
+		label := lbl.(string)
+		r, ok := rmap[label]
+		if !ok {
+			r = &results{0, 0, map[int]int{}}
+			rmap[label] = r
+		}
+		r.rolls++
+		if margin.(int) > 0 {
+			r.wins++
+			r.margins[margin.(int)]++
+		}
+		if lastLabel != label {
+			if lastLabel != "" {
+				lastR := rmap[lastLabel]
+				printResult(lastLabel, lastR.rolls, lastR.wins, lastR.margins)
+			}
+			lastLabel = label
+		}
+	})
+	lastR := rmap[lastLabel]
+	printResult(lastLabel, lastR.rolls, lastR.wins, lastR.margins)
+//*/
 }
 
-func printResult(label string, dlabel string, rolls int, wins int, margins map[int]int) {
-	fmt.Printf("%s vs %s rolls: %d wins: %d margins:", label, dlabel, rolls, wins)
+func printResult(label string, rolls int, wins int, margins map[int]int) {
+	fmt.Printf("%s rolls: %d wins: %d margins:", label, rolls, wins)
 	for i := 1; i <= 9; i++ {
 		v := margins[i]
 		if v > 0 {
